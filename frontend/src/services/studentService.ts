@@ -91,12 +91,18 @@ export const studentService = {
   },
 
   createSection: async (section: string, payload: Record<string, unknown>) => {
-    const response = await api.post(`/student/${section}`, payload);
+    const isFormData = payload instanceof FormData;
+    const response = await api.post(`/student/${section}`, payload, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
+    });
     return response.data;
   },
 
   updateSection: async (section: string, id: number, payload: Record<string, unknown>) => {
-    const response = await api.put(`/student/${section}/${id}`, payload);
+    const isFormData = payload instanceof FormData;
+    const response = await api.put(`/student/${section}/${id}`, payload, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
+    });
     return response.data;
   },
 

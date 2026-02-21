@@ -22,7 +22,7 @@ import FacultyCompanyDetail from './pages/faculty/CompanyDetail';
 import FacultyInternships from './pages/faculty/Internships';
 import FacultyReports from './pages/faculty/Reports';
 import FacultySettings from './pages/faculty/Settings';
-import Messages from './pages/Messages';
+
 import Notifications from './pages/Notifications';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -61,7 +61,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/register" element={!user ? <Register /> : <Navigate to="/dashboard" />} />
       <Route path="/company/register" element={!user ? <CompanyRegister /> : <Navigate to="/dashboard" />} />
       <Route path="/faculty/login" element={!user ? <FacultyLogin /> : <Navigate to="/dashboard" />} />
-      
+
       <Route
         path="/dashboard"
         element={
@@ -70,8 +70,8 @@ const AppRoutes: React.FC = () => {
               {user?.role === 'student'
                 ? <StudentDashboard />
                 : user?.role === 'company'
-                ? <CompanyDashboard />
-                : <FacultyDashboard />}
+                  ? <CompanyDashboard />
+                  : <FacultyDashboard />}
             </Layout>
           </PrivateRoute>
         }
@@ -79,7 +79,7 @@ const AppRoutes: React.FC = () => {
 
       {/* Student Routes */}
       <Route
-        path="/student/profile"
+        path="/student/profile/:tab?"
         element={
           <PrivateRoute allowedRoles={['student']}>
             <Layout>
@@ -109,7 +109,7 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
-        path="/student/applications"
+        path="/application"
         element={
           <PrivateRoute allowedRoles={['student']}>
             <Layout>
@@ -234,16 +234,6 @@ const AppRoutes: React.FC = () => {
       />
 
       {/* Common Routes */}
-      <Route
-        path="/messages"
-        element={
-          <PrivateRoute>
-            <Layout>
-              <Messages />
-            </Layout>
-          </PrivateRoute>
-        }
-      />
       <Route
         path="/notifications"
         element={

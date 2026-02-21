@@ -87,7 +87,7 @@ SECTION_CONFIG = {
     },
     'certifications': {
         'model': StudentCertification,
-        'fields': ['name', 'issuer', 'issue_date', 'expiry_date', 'credential_id', 'credential_url', 'description'],
+        'fields': ['name', 'issuer', 'issue_date', 'expiry_date', 'credential_id', 'credential_url', 'certificate_file', 'description'],
         'date_fields': ['issue_date', 'expiry_date'],
         'order_by': StudentCertification.issue_date.desc(),
     },
@@ -653,8 +653,6 @@ def calculate_profile_completion(profile, sections):
         {'label': 'Course/branch', 'done': has_course},
         {'label': 'Specialization/class', 'done': has_specialization},
         {'label': 'Date of birth', 'done': bool(profile.date_of_birth)},
-        {'label': 'Address', 'done': _has_value(profile.address)},
-        {'label': 'Profile bio', 'done': _has_value(profile.bio)},
         {'label': 'PRN number', 'done': _has_value(profile.prn_number)},
         {'label': 'Skills', 'done': has_skills},
         {'label': 'Education section', 'done': bool(education_entries)},
@@ -1448,9 +1446,28 @@ def certifications_collection():
         entries = StudentCertification.query.filter_by(student_id=profile.id).order_by(StudentCertification.issue_date.desc().nullslast()).all()
         return jsonify([e.to_dict() for e in entries]), 200
 
-    data = request.get_json()
+    certificate_file = None
+    if 'certificate_file' in request.files:
+        upload = request.files['certificate_file']
+        if upload.filename != '':
+            filename = secure_filename(upload.filename)
+            cert_dir = _public_absolute_path('certificates')
+            os.makedirs(cert_dir, exist_ok=True)
+            filepath_abs = os.path.join(
+                cert_dir,
+                f"{profile.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}",
+            )
+            upload.save(filepath_abs)
+            certificate_file = _public_relative_path('certificates', os.path.basename(filepath_abs))
+
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        data = request.form.to_dict()
+    else:
+        data = request.get_json() or {}
+
     if not data.get('name'):
         return jsonify({'error': 'name is required'}), 400
+
     entry = StudentCertification(
         student_id=profile.id,
         name=data.get('name'),
@@ -1459,6 +1476,7 @@ def certifications_collection():
         expiry_date=parse_date(data.get('expiry_date')),
         credential_id=data.get('credential_id'),
         credential_url=data.get('credential_url'),
+        certificate_file=certificate_file or data.get('certificate_file'),
         description=data.get('description')
     )
     db.session.add(entry)
@@ -1481,10 +1499,32 @@ def certifications_detail(entry_id):
         db.session.commit()
         return jsonify({'message': 'Certification removed'}), 200
 
-    data = request.get_json()
+    certificate_file = None
+    if 'certificate_file' in request.files:
+        upload = request.files['certificate_file']
+        if upload.filename != '':
+            filename = secure_filename(upload.filename)
+            cert_dir = _public_absolute_path('certificates')
+            os.makedirs(cert_dir, exist_ok=True)
+            filepath_abs = os.path.join(
+                cert_dir,
+                f"{profile.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}",
+            )
+            upload.save(filepath_abs)
+            certificate_file = _public_relative_path('certificates', os.path.basename(filepath_abs))
+
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        data = request.form.to_dict()
+    else:
+        data = request.get_json() or {}
+
     for field in ['name', 'issuer', 'credential_id', 'credential_url', 'description']:
         if field in data:
             setattr(entry, field, data[field])
+    if certificate_file:
+        entry.certificate_file = certificate_file
+    elif 'certificate_file' in data:
+        entry.certificate_file = data.get('certificate_file')
     if 'issue_date' in data:
         entry.issue_date = parse_date(data.get('issue_date'))
     if 'expiry_date' in data:

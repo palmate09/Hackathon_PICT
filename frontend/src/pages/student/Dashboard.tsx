@@ -198,7 +198,7 @@ const StudentDashboard: React.FC = () => {
             </div>
           ))}
         </div>
-        <Link to="/student/applications" className="btn btn-secondary">
+        <Link to="/application" className="btn btn-secondary">
           View All Applications
         </Link>
       </div>

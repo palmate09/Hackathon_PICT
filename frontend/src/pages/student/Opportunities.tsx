@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { applicationService } from '../../services/applicationService';
 import { studentService } from '../../services/studentService';
 import { JobsSummary, JobOpportunityCard } from '../../types';
@@ -16,12 +16,17 @@ import {
 } from 'react-icons/fi';
 import './Opportunities.css';
 
-const Opportunities: React.FC = () => {
+interface OpportunitiesProps {
+  initialTab?: 'opportunities' | 'applications' | 'offers';
+}
+
+const Opportunities: React.FC<OpportunitiesProps> = ({ initialTab }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ opportunityId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<JobsSummary | null>(null);
-  const [activeTab, setActiveTab] = useState<'opportunities' | 'applications' | 'offers' | 'external-jobs'>('opportunities');
+  const [activeTab, setActiveTab] = useState<'opportunities' | 'applications' | 'offers'>(initialTab || 'opportunities');
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [workTypeFilter, setWorkTypeFilter] = useState<string>('all');
@@ -33,12 +38,24 @@ const Opportunities: React.FC = () => {
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: ToastType }>>([]);
 
   useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['opportunities', 'applications', 'offers'].includes(tabParam)) {
+      setActiveTab(tabParam as 'opportunities' | 'applications' | 'offers');
+    } else if (initialTab) {
+      setSearchParams({ tab: initialTab });
+    }
+  }, []);
+
+  const handleTabChange = (tab: 'opportunities' | 'applications' | 'offers') => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
+
+  useEffect(() => {
     loadSummary();
   }, []);
 
   const [matchedOpportunities, setMatchedOpportunities] = useState<any[]>([]);
-  const [externalJobs, setExternalJobs] = useState<any[]>([]);
-  const [loadingExternalJobs, setLoadingExternalJobs] = useState(false);
   const handledDeepLinkRef = useRef<number | null>(null);
 
   const routeOpportunityId = useMemo(() => {
@@ -78,24 +95,6 @@ const Opportunities: React.FC = () => {
     }
   };
 
-  const loadExternalJobs = async () => {
-    setLoadingExternalJobs(true);
-    try {
-      const data = await studentService.getExternalJobs(70);
-      setExternalJobs(data.external_jobs || []);
-    } catch (error: any) {
-      addToast('Failed to load external jobs', 'error');
-    } finally {
-      setLoadingExternalJobs(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'external-jobs' && externalJobs.length === 0) {
-      loadExternalJobs();
-    }
-  }, [activeTab]);
-
   useEffect(() => {
     const targetOpportunityId = routeOpportunityId ?? stateOpportunityId;
     if (!targetOpportunityId) {
@@ -118,13 +117,13 @@ const Opportunities: React.FC = () => {
       handledDeepLinkRef.current = targetOpportunityId;
       addToast(`Opportunity #${targetOpportunityId} not found`, 'error');
       if (routeOpportunityId) {
-        navigate('/student/opportunities', { replace: true });
+        navigate('/application', { replace: true });
       }
       return;
     }
 
     handledDeepLinkRef.current = targetOpportunityId;
-    setActiveTab('opportunities');
+    handleTabChange('opportunities');
     setSelectedOpportunity(target as JobOpportunityCard);
     setShowApplicationModal(true);
   }, [
@@ -159,7 +158,7 @@ const Opportunities: React.FC = () => {
       setShowApplicationModal(false);
       setSelectedOpportunity(null);
       if (routeOpportunityId) {
-        navigate('/student/opportunities', { replace: true });
+        navigate('/application', { replace: true });
       }
       loadSummary();
     } catch (error: any) {
@@ -248,15 +247,15 @@ const Opportunities: React.FC = () => {
 
       {/* Tabs */}
       <div className="opportunities-tabs">
-        {(['opportunities', 'applications', 'offers', 'external-jobs'] as const).map((tab) => (
+        {(['opportunities', 'applications', 'offers'] as const).map((tab) => (
           <motion.button
             key={tab}
             className={`tab-button ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => handleTabChange(tab)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            {tab === 'external-jobs' ? 'External Jobs' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </motion.button>
         ))}
       </div>
@@ -405,62 +404,6 @@ const Opportunities: React.FC = () => {
             </>
           )}
 
-          {activeTab === 'external-jobs' && (
-            <>
-              <motion.div
-                className="matched-opportunities-header"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <p className="match-info">
-                  🌐 External jobs from web (LinkedIn, Indeed, etc.) - <strong>70%+ skills match</strong>
-                </p>
-              </motion.div>
-
-              {loadingExternalJobs ? (
-                <div className="opportunities-loading">
-                  <motion.div
-                    className="spinner"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  />
-                  <p>Loading external jobs...</p>
-                </div>
-              ) : (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="external-jobs-list"
-                    className="opportunities-list"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {externalJobs.length === 0 ? (
-                      <motion.div
-                        className="empty-state"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                      >
-                        <p>No external jobs found with 70%+ skills match.</p>
-                        <p style={{ fontSize: '0.9em', color: '#666', marginTop: '0.5em' }}>
-                          External jobs are fetched from web APIs. Check back later!
-                        </p>
-                      </motion.div>
-                    ) : (
-                      externalJobs.map((job, index) => (
-                        <ExternalJobCard
-                          key={job.id}
-                          job={job}
-                          index={index}
-                        />
-                      ))
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              )}
-            </>
-          )}
-
           {activeTab === 'applications' && summary && (
             <ApplicationsTab applications={summary.applications || []} />
           )}
@@ -490,7 +433,7 @@ const Opportunities: React.FC = () => {
             setShowApplicationModal(false);
             setSelectedOpportunity(null);
             if (routeOpportunityId) {
-              navigate('/student/opportunities', { replace: true });
+              navigate('/application', { replace: true });
             }
           }}
           onSubmit={handleApplicationSubmit}
@@ -592,94 +535,6 @@ const MatchedOpportunityCard: React.FC<{
             Match too low to apply (Need 70%+)
           </span>
         )}
-      </div>
-    </motion.div>
-  );
-};
-
-// External Job Card Component
-const ExternalJobCard: React.FC<{
-  job: any;
-  index: number;
-}> = ({ job, index }) => {
-  const matchData = job.match_data || {};
-  const matchPercent = matchData.match_percentage || 0;
-  const matchedSkills = matchData.matched_skills || [];
-  const missingSkills = matchData.missing_skills || [];
-
-  return (
-    <motion.div
-      className="opportunity-card external-job-card"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      whileHover={{ y: -4, boxShadow: 'var(--shadow-xl)' }}
-    >
-      <div className="opportunity-card-header">
-        <div>
-          <h3>{job.title}</h3>
-          <p className="company-name">{job.company_name || 'Company'}</p>
-          <span className="external-source-badge">Source: {job.source || 'External'}</span>
-        </div>
-        <div className="match-badge-container">
-          <span className={`badge badge-primary match-badge ${matchPercent >= 80 ? 'match-excellent' : matchPercent >= 70 ? 'match-good' : ''}`}>
-            {matchPercent.toFixed(1)}% Match
-          </span>
-        </div>
-      </div>
-
-      {/* Match Details */}
-      <div className="match-details-section">
-        <div className="matched-skills">
-          <strong>✅ Matched Skills:</strong>
-          <div className="skills-list">
-            {matchedSkills.length > 0 ? (
-              matchedSkills.map((skill: string) => (
-                <span key={skill} className="tag tag-success">{skill}</span>
-              ))
-            ) : (
-              <span className="tag">None</span>
-            )}
-          </div>
-        </div>
-        {missingSkills.length > 0 && (
-          <div className="missing-skills">
-            <strong>❌ Missing Skills:</strong>
-            <div className="skills-list">
-              {missingSkills.map((skill: string) => (
-                <span key={skill} className="tag tag-warning">{skill}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="opportunity-card-meta">
-        <span>
-          <FiMapPin size={14} />
-          {job.location || 'Remote'}
-        </span>
-        <span>
-          <FiDollarSign size={14} />
-          {job.salary_range || 'Not specified'}
-        </span>
-        <span>
-          <FiClock size={14} />
-          {job.job_type || 'Full-time'}
-        </span>
-      </div>
-
-      <div className="opportunity-card-actions">
-        <motion.a
-          href={job.application_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-primary"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          Apply on {job.source || 'External Site'} ({matchPercent.toFixed(0)}% Match)
-        </motion.a>
       </div>
     </motion.div>
   );

@@ -5,14 +5,15 @@ import Opportunities from './Opportunities';
 const StudentApplications: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   
+  const tab = searchParams.get('tab') || 'applications';
+
   React.useEffect(() => {
-    // Set the tab to applications if not already set
-    if (searchParams.get('tab') !== 'applications') {
+    if (!searchParams.get('tab')) {
       setSearchParams({ tab: 'applications' });
     }
   }, [searchParams, setSearchParams]);
 
-  return <Opportunities />;
+  return <Opportunities initialTab={tab} />;
 };
 
 export default StudentApplications;

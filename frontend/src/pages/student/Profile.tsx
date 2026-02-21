@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { FiX } from 'react-icons/fi';
 import { studentService } from '../../services/studentService';
 
 type FormField = {
   name: string;
   label: string;
-  type?: 'text' | 'textarea' | 'date' | 'tags';
+  type?: 'text' | 'textarea' | 'date' | 'tags' | 'file';
   placeholder?: string;
   required?: boolean;
 };
@@ -85,6 +87,7 @@ const SECTION_FIELDS: Record<string, FormField[]> = {
     { name: 'expiry_date', label: 'Expiry Date', type: 'date' },
     { name: 'credential_id', label: 'Credential ID' },
     { name: 'credential_url', label: 'Credential URL' },
+    { name: 'certificate_file', label: 'Upload Certificate', type: 'file' },
     { name: 'description', label: 'Notes', type: 'textarea' },
   ],
   publications: [
@@ -204,6 +207,7 @@ const FIELD_LABEL_OVERRIDES: Record<string, string> = {
   ctc: 'CTC',
   prn_number: 'PRN Number',
   is_current: 'Currently Active',
+  certificate_file: 'Certificate',
 };
 
 const SECTION_CARD_FIELDS: Record<string, string[]> = {
@@ -212,7 +216,7 @@ const SECTION_CARD_FIELDS: Record<string, string[]> = {
   internships: ['organization', 'industry_sector', 'internship_type', 'stipend', 'start_date', 'end_date'],
   projects: ['organization', 'role', 'start_date', 'end_date', 'technologies'],
   trainings: ['provider', 'mode', 'start_date', 'end_date'],
-  certifications: ['issuer', 'issue_date', 'expiry_date', 'credential_id'],
+  certifications: ['issuer', 'issue_date', 'expiry_date', 'credential_id', 'certificate_file'],
   publications: ['publication_type', 'publisher', 'publication_date', 'url'],
   positions: ['organization', 'start_date', 'end_date', 'is_current'],
   offers: ['role', 'ctc', 'status', 'offer_date', 'joining_date', 'location'],
@@ -359,7 +363,12 @@ const computeAggregateCgpa = (rows: AcademicSemesterState[]): string => {
 };
 
 const StudentProfileWorkspace: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('basic');
+  const { tab: urlTab } = useParams();
+  const navigate = useNavigate();
+
+  const activeTabKey = urlTab || 'basic';
+  const isValidTab = NAV_TABS.some(t => t.key === activeTabKey);
+  const activeTab = isValidTab ? activeTabKey : 'basic';
   const [formState, setFormState] = useState<Record<string, any>>({});
   const [savedBasicProfile, setSavedBasicProfile] = useState<Record<string, any>>({});
   const [sections, setSections] = useState<Record<string, any[]>>({});
@@ -387,6 +396,7 @@ const StudentProfileWorkspace: React.FC = () => {
   const [savingAcademicDetails, setSavingAcademicDetails] = useState(false);
   const [uploadingSemesterMarksheet, setUploadingSemesterMarksheet] = useState<string | null>(null);
   const [viewingEntry, setViewingEntry] = useState<{ sectionKey: string; entry: Record<string, any> } | null>(null);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -776,15 +786,36 @@ const StudentProfileWorkspace: React.FC = () => {
 
     setSavingSection(true);
     try {
-      if (editingEntry) {
-        await studentService.updateSection(activeTab, editingEntry, payload);
-        showToast('Entry updated');
+      const hasFileUpload = activeTab === 'certifications' && certificateFile;
+
+      if (hasFileUpload) {
+        const formData = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            formData.append(key, value);
+          }
+        });
+        formData.append('certificate_file', certificateFile);
+
+        if (editingEntry) {
+          await studentService.updateSection(activeTab, editingEntry, formData as unknown as Record<string, unknown>);
+        } else {
+          await studentService.createSection(activeTab, formData as unknown as Record<string, unknown>);
+        }
+
+        showToast(editingEntry ? 'Entry updated' : 'Entry added');
       } else {
-        await studentService.createSection(activeTab, payload);
-        showToast('Entry added');
+        if (editingEntry) {
+          await studentService.updateSection(activeTab, editingEntry, payload);
+          showToast('Entry updated');
+        } else {
+          await studentService.createSection(activeTab, payload);
+          showToast('Entry added');
+        }
       }
       setSectionForm({});
       setEditingEntry(null);
+      setCertificateFile(null);
       await loadProfile();
     } catch (error: any) {
       showToast(error?.response?.data?.error || 'Failed to save entry');
@@ -877,11 +908,12 @@ const StudentProfileWorkspace: React.FC = () => {
               key={tab.key}
               className={`sidebar-tab ${tab.key === activeTab ? 'active' : ''}`}
               onClick={() => {
-                setActiveTab(tab.key);
+                navigate(`/student/profile/${tab.key}`);
                 setSectionForm({});
                 setEditingEntry(null);
                 setViewingEntry(null);
-                if (tab.key === 'basic') {
+                setCertificateFile(null);
+                if (tab.key === 'basic' && activeTab !== 'basic') {
                   loadProfile();
                 }
               }}
@@ -1373,7 +1405,28 @@ const StudentProfileWorkspace: React.FC = () => {
         )}
 
         {activeTab !== 'basic' && activeTab !== 'placement-policy' && activeTab !== 'academic-details' && (
-          <div className="section-wrapper">
+          <div className={`section-wrapper ${activeTab === 'attachments' ? 'attachments-layout' : ''}`}>
+            {activeTab === 'attachments' && (
+              <div className="section-form upload-attachment-card">
+                <h4>Upload Attachment</h4>
+                <p className="muted">Choose a file (transcript, offer letter, certificate, etc.)</p>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const formData = new FormData();
+                    formData.append('title', file.name);
+                    formData.append('file', file);
+                    await studentService.uploadAttachment(formData);
+                    showToast('Attachment uploaded');
+                    loadProfile();
+                  }}
+                />
+              </div>
+            )}
+
             <div className="section-list">
               {(sections[activeTab] || []).length === 0 ? (
                 <p className="empty-state">No records added yet.</p>
@@ -1402,9 +1455,11 @@ const StudentProfileWorkspace: React.FC = () => {
                       >
                         View
                       </button>
-                      <button className="btn btn-secondary" onClick={() => startEditing(entry)} type="button">
-                        Edit
-                      </button>
+                      {activeTab !== 'attachments' && (
+                        <button className="btn btn-secondary" onClick={() => startEditing(entry)} type="button">
+                          Edit
+                        </button>
+                      )}
                       <button className="btn btn-danger" onClick={() => deleteEntry(entry.id)} type="button">
                         Delete
                       </button>
@@ -1435,6 +1490,23 @@ const StudentProfileWorkspace: React.FC = () => {
                           }))
                         }
                       />
+                    ) : field.type === 'file' ? (
+                      <div className="file-upload-wrapper">
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            setCertificateFile(file);
+                          }}
+                        />
+                        {certificateFile && (
+                          <span className="file-selected">{certificateFile.name}</span>
+                        )}
+                        {sectionForm[field.name] && !certificateFile && (
+                          <span className="file-exists">Current: {sectionForm[field.name]}</span>
+                        )}
+                      </div>
                     ) : (
                       <input
                         type={field.type === 'date' ? 'date' : 'text'}
@@ -1458,6 +1530,7 @@ const StudentProfileWorkspace: React.FC = () => {
                       onClick={() => {
                         setSectionForm({});
                         setEditingEntry(null);
+                        setCertificateFile(null);
                       }}
                     >
                       Cancel
@@ -1470,26 +1543,6 @@ const StudentProfileWorkspace: React.FC = () => {
               </form>
             )}
 
-            {activeTab === 'attachments' && (
-              <div className="section-form">
-                <h4>Upload Attachment</h4>
-                <p className="muted">Choose a file (transcript, offer letter, certificate, etc.)</p>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const formData = new FormData();
-                    formData.append('title', file.name);
-                    formData.append('file', file);
-                    await studentService.uploadAttachment(formData);
-                    showToast('Attachment uploaded');
-                    loadProfile();
-                  }}
-                />
-              </div>
-            )}
           </div>
         )}
 
@@ -1501,8 +1554,8 @@ const StudentProfileWorkspace: React.FC = () => {
                   <h3>{getEntryTitle(viewingEntry.entry)}</h3>
                   <p>{NAV_TABS.find((tab) => tab.key === viewingEntry.sectionKey)?.label || 'Details'}</p>
                 </div>
-                <button className="modal-close" onClick={() => setViewingEntry(null)} aria-label="Close">
-                  ×
+                <button className="modal-close" onClick={() => setViewingEntry(null)} aria-label="Close" title="Close">
+                  <FiX />
                 </button>
               </div>
               <div className="profile-entry-modal-body">
@@ -1510,7 +1563,7 @@ const StudentProfileWorkspace: React.FC = () => {
                   const rawValue = field.value;
                   const formattedValue = formatDisplayValue(rawValue);
                   const isPathOrUrlField =
-                    field.key.includes('_url') || field.key.includes('_path') || field.key === 'file_path';
+                    field.key.includes('_url') || field.key.includes('_path') || field.key === 'file_path' || field.key === 'certificate_file';
                   const resolvedLink = typeof rawValue === 'string' ? resolveAssetUrl(rawValue) : '';
 
                   return (
@@ -1518,7 +1571,7 @@ const StudentProfileWorkspace: React.FC = () => {
                       <span>{field.label}</span>
                       {isPathOrUrlField && formattedValue !== '-' ? (
                         <a href={resolvedLink} target="_blank" rel="noreferrer">
-                          {formattedValue}
+                          {field.key === 'certificate_file' ? 'View Certificate' : formattedValue}
                         </a>
                       ) : (
                         <strong>{formattedValue}</strong>

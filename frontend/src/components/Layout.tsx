@@ -7,7 +7,6 @@ import { notificationService } from '../services/notificationService';
 import { 
   FiBriefcase, 
   FiFileText, 
-  FiMessageSquare, 
   FiBell, 
   FiUser, 
   FiLogOut,
@@ -62,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return [
         { path: '/dashboard', label: 'Dashboard', icon: FiHome },
         { path: '/student/opportunities', label: 'Opportunities', icon: FiBriefcase },
-        { path: '/student/applications', label: 'Applications', icon: FiFileText },
+        { path: '/application', label: 'Applications', icon: FiFileText },
         { path: '/student/ai-resume-matcher', label: 'AI Resume Matcher', icon: FiLayers },
         { path: '/student/profile', label: 'Profile', icon: FiUser },
       ];
@@ -114,14 +113,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </Link>
               );
             })}
-            
-            <Link
-              to="/messages"
-              className={`nav-link ${isActive('/messages') ? 'active' : ''}`}
-            >
-              <FiMessageSquare size={18} />
-              <span>Messages</span>
-            </Link>
             
             <Link
               to="/notifications"
@@ -193,14 +184,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </Link>
               );
             })}
-            <Link
-              to="/messages"
-              className={`mobile-nav-link ${isActive('/messages') ? 'active' : ''}`}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <FiMessageSquare size={20} />
-              <span>Messages</span>
-            </Link>
             <Link
               to="/notifications"
               className={`mobile-nav-link ${isActive('/notifications') ? 'active' : ''}`}

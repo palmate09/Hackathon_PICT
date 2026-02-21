@@ -305,6 +305,7 @@ class StudentCertification(db.Model):
     expiry_date = db.Column(db.Date)
     credential_id = db.Column(db.String(150))
     credential_url = db.Column(db.String(255))
+    certificate_file = db.Column(db.String(500))
     description = db.Column(db.Text)
 
     def to_dict(self):
@@ -317,6 +318,7 @@ class StudentCertification(db.Model):
             'expiry_date': self.expiry_date.isoformat() if self.expiry_date else None,
             'credential_id': self.credential_id,
             'credential_url': self.credential_url,
+            'certificate_file': self.certificate_file,
             'description': self.description
         }
 
