@@ -44,23 +44,9 @@ const ApplicationModal: React.FC<ApplicationModalProps> = ({
 
   const loadProfileData = async () => {
     try {
-      const profile = await studentService.getProfile();
-      // Calculate profile completeness (more lenient)
-      let complete = 0;
-      const fields = {
-        name: (profile.first_name && profile.last_name) ? 15 : 0,
-        email: profile.email ? 5 : 0,
-        phone: profile.phone ? 10 : 0,
-        date_of_birth: profile.date_of_birth ? 5 : 0,
-        course: profile.course ? 10 : 0,
-        skills: (profile.skills && profile.skills.length > 0) ? 15 : 0,
-        education: (profile.education && profile.education.length > 0) ? 10 : 0,
-        resume_path: profile.resume_path ? 20 : 0,
-        bio: profile.bio ? 5 : 0,
-        address: profile.address ? 5 : 0,
-      };
-      complete = Object.values(fields).reduce((sum, val) => sum + val, 0);
-      setProfileComplete(complete);
+      const fullProfile = await studentService.getFullProfile();
+      const profile = fullProfile.profile;
+      setProfileComplete(fullProfile.completion_percentage || 0);
       setResumePath(profile.resume_path || null);
       
       // Calculate skill match if not provided

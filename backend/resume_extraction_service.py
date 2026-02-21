@@ -7,6 +7,7 @@ import time
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
+from datetime import datetime
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -622,6 +623,248 @@ def _extract_json_object(raw_text: str) -> Dict[str, Any]:
         return {}
 
 
+def _normalize_date_string(value: Any) -> str:
+    text = _clean_text(str(value or ""))
+    if not text:
+        return ""
+
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text
+
+    if re.fullmatch(r"\d{4}/\d{2}/\d{2}", text):
+        return text.replace("/", "-")
+
+    date_formats = [
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m",
+        "%m/%Y",
+        "%b %Y",
+        "%B %Y",
+        "%Y",
+    ]
+    for date_format in date_formats:
+        try:
+            parsed = datetime.strptime(text, date_format)
+            return parsed.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return ""
+
+
+def _split_contact_name(name: str) -> Tuple[str, str, str]:
+    parts = [segment.strip() for segment in re.split(r"\s+", str(name or "").strip()) if segment.strip()]
+    if not parts:
+        return "", "", ""
+    if len(parts) == 1:
+        return parts[0], "", ""
+    if len(parts) == 2:
+        return parts[0], "", parts[1]
+    return parts[0], " ".join(parts[1:-1]), parts[-1]
+
+
+def _coerce_text(value: Any, max_len: int = 500) -> str:
+    text = _clean_text(str(value or ""))
+    return text[:max_len] if text else ""
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", ""}:
+            return False
+    return bool(value)
+
+
+def _coerce_text_list(value: Any, limit: int = 20, item_max_len: int = 100) -> List[str]:
+    return [item[:item_max_len] for item in _normalize_unique(value, limit=limit)]
+
+
+def _normalize_module_entries(
+    entries: Any,
+    allowed_fields: List[str],
+    date_fields: Optional[set] = None,
+    list_fields: Optional[set] = None,
+) -> List[Dict[str, Any]]:
+    if not isinstance(entries, list):
+        return []
+
+    date_fields = date_fields or set()
+    list_fields = list_fields or set()
+    output: List[Dict[str, Any]] = []
+
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        normalized_item: Dict[str, Any] = {}
+        for field in allowed_fields:
+            if field not in item:
+                continue
+            value = item.get(field)
+
+            if field in date_fields:
+                normalized_value = _normalize_date_string(value)
+                if normalized_value:
+                    normalized_item[field] = normalized_value
+                continue
+
+            if field in list_fields:
+                normalized_list = _coerce_text_list(value, limit=20)
+                if normalized_list:
+                    normalized_item[field] = normalized_list
+                continue
+
+            if isinstance(value, bool):
+                normalized_item[field] = value
+                continue
+
+            if isinstance(value, (int, float)):
+                normalized_item[field] = value
+                continue
+
+            text = _coerce_text(value, max_len=500)
+            if text:
+                normalized_item[field] = text
+
+        if normalized_item:
+            output.append(normalized_item)
+    return output
+
+
+def _normalize_profile_modules(
+    candidate_modules: Any,
+    contact: Dict[str, Any],
+    canonical_skills: List[str],
+    summary: str,
+    education_entries: Any,
+    keywords: List[str],
+) -> Dict[str, Any]:
+    modules = candidate_modules if isinstance(candidate_modules, dict) else {}
+    basic_candidate = modules.get("basic_profile") if isinstance(modules.get("basic_profile"), dict) else {}
+
+    first_name, middle_name, last_name = _split_contact_name(contact.get("name", ""))
+    basic_profile = {
+        "first_name": _coerce_text(basic_candidate.get("first_name") or first_name, 100),
+        "middle_name": _coerce_text(basic_candidate.get("middle_name") or middle_name, 100),
+        "last_name": _coerce_text(basic_candidate.get("last_name") or last_name, 100),
+        "phone": _coerce_text(basic_candidate.get("phone") or contact.get("phone", ""), 50),
+        "address": _coerce_text(basic_candidate.get("address") or contact.get("location", ""), 500),
+        "bio": _coerce_text(basic_candidate.get("bio") or summary, 2000),
+        "skills": _coerce_text_list(basic_candidate.get("skills") or canonical_skills, limit=40),
+        "interests": _coerce_text_list(basic_candidate.get("interests") or keywords, limit=15),
+        "linkedin_url": _coerce_text(basic_candidate.get("linkedin_url"), 255),
+        "github_url": _coerce_text(basic_candidate.get("github_url"), 255),
+        "portfolio_url": _coerce_text(basic_candidate.get("portfolio_url"), 255),
+        "course": _coerce_text(basic_candidate.get("course"), 150),
+        "specialization": _coerce_text(basic_candidate.get("specialization"), 150),
+        "gender": _coerce_text(basic_candidate.get("gender"), 20),
+        "date_of_birth": _normalize_date_string(basic_candidate.get("date_of_birth")),
+    }
+
+    normalized_education = _normalize_module_entries(
+        modules.get("education"),
+        allowed_fields=["degree", "institution", "course", "specialization", "start_date", "end_date", "gpa", "achievements", "description"],
+        date_fields={"start_date", "end_date"},
+    )
+    if not normalized_education and isinstance(education_entries, list):
+        fallback_education: List[Dict[str, Any]] = []
+        for entry in education_entries:
+            if not isinstance(entry, dict):
+                continue
+            degree = _coerce_text(entry.get("degree"), 150)
+            institution = _coerce_text(entry.get("institution"), 255)
+            if not degree and not institution:
+                continue
+            item = {
+                "degree": degree,
+                "institution": institution,
+                "start_date": _normalize_date_string(entry.get("start")),
+                "end_date": _normalize_date_string(entry.get("end")),
+            }
+            compact_item = {}
+            for key, value in item.items():
+                if isinstance(value, str):
+                    if _coerce_text(value):
+                        compact_item[key] = value
+                elif value:
+                    compact_item[key] = value
+            fallback_education.append(compact_item)
+        normalized_education = [item for item in fallback_education if item]
+
+    placement_policy_candidate = modules.get("placement_policy") if isinstance(modules.get("placement_policy"), dict) else {}
+    placement_policy = {}
+    if placement_policy_candidate:
+        placement_policy = {
+            "eligible_for_placements": _coerce_bool(placement_policy_candidate.get("eligible_for_placements"), default=True),
+            "interested_in_jobs": _coerce_bool(placement_policy_candidate.get("interested_in_jobs"), default=True),
+            "interested_in_internships": _coerce_bool(placement_policy_candidate.get("interested_in_internships"), default=True),
+            "placement_policy_agreed": _coerce_bool(placement_policy_candidate.get("placement_policy_agreed"), default=False),
+            "policy_version": _coerce_text(placement_policy_candidate.get("policy_version"), 64),
+        }
+
+    return {
+        "basic_profile": basic_profile,
+        "education": normalized_education,
+        "experiences": _normalize_module_entries(
+            modules.get("experiences"),
+            allowed_fields=["company_name", "designation", "employment_type", "start_date", "end_date", "location", "description", "technologies"],
+            date_fields={"start_date", "end_date"},
+            list_fields={"technologies"},
+        ),
+        "internships": _normalize_module_entries(
+            modules.get("internships"),
+            allowed_fields=["designation", "organization", "industry_sector", "stipend", "internship_type", "start_date", "end_date", "mentor_name", "mentor_contact", "mentor_designation", "description", "technologies"],
+            date_fields={"start_date", "end_date"},
+            list_fields={"technologies"},
+        ),
+        "projects": _normalize_module_entries(
+            modules.get("projects"),
+            allowed_fields=["title", "organization", "role", "start_date", "end_date", "description", "technologies", "links"],
+            date_fields={"start_date", "end_date"},
+            list_fields={"technologies", "links"},
+        ),
+        "trainings": _normalize_module_entries(
+            modules.get("trainings"),
+            allowed_fields=["title", "provider", "mode", "start_date", "end_date", "description"],
+            date_fields={"start_date", "end_date"},
+        ),
+        "certifications": _normalize_module_entries(
+            modules.get("certifications"),
+            allowed_fields=["name", "issuer", "issue_date", "expiry_date", "credential_id", "credential_url", "description"],
+            date_fields={"issue_date", "expiry_date"},
+        ),
+        "publications": _normalize_module_entries(
+            modules.get("publications"),
+            allowed_fields=["title", "publication_type", "publisher", "publication_date", "url", "description"],
+            date_fields={"publication_date"},
+        ),
+        "positions": _normalize_module_entries(
+            modules.get("positions"),
+            allowed_fields=["title", "organization", "start_date", "end_date", "description"],
+            date_fields={"start_date", "end_date"},
+        ),
+        "offers": _normalize_module_entries(
+            modules.get("offers"),
+            allowed_fields=["company_name", "role", "ctc", "status", "offer_date", "joining_date", "location", "notes"],
+            date_fields={"offer_date", "joining_date"},
+        ),
+        "placement_policy": placement_policy,
+        "academic_details": _normalize_module_entries(
+            modules.get("academic_details"),
+            allowed_fields=["degree_name", "branch_name", "batch_start_year", "batch_end_year", "semester_label", "sgpa", "closed_backlogs", "live_backlogs", "marksheet_file_path", "display_order"],
+        ),
+    }
+
+
 def _gemini_structured_parse(text: str) -> Dict[str, Any]:
     api_key = _get_config_value("GEMINI_API_KEY") or _get_config_value("GOOGLE_API_KEY")
     if not api_key:
@@ -645,12 +888,33 @@ def _gemini_structured_parse(text: str) -> Dict[str, Any]:
         '  "keywords": [""],\n'
         '  "tech_stack": [""],\n'
         '  "missing_skills": [""],\n'
-        '  "strengths": [""]\n'
+        '  "strengths": [""],\n'
+        '  "profile_modules": {\n'
+        '    "basic_profile": {\n'
+        '      "first_name": "", "middle_name": "", "last_name": "", "phone": "",\n'
+        '      "date_of_birth": "", "address": "", "bio": "", "skills": [""], "interests": [""],\n'
+        '      "linkedin_url": "", "github_url": "", "portfolio_url": "", "course": "",\n'
+        '      "specialization": "", "gender": ""\n'
+        "    },\n"
+        '    "education": [{"degree": "", "institution": "", "course": "", "specialization": "", "start_date": "", "end_date": "", "gpa": "", "achievements": ""}],\n'
+        '    "experiences": [{"company_name": "", "designation": "", "employment_type": "", "start_date": "", "end_date": "", "location": "", "description": "", "technologies": [""]}],\n'
+        '    "internships": [{"designation": "", "organization": "", "industry_sector": "", "stipend": "", "internship_type": "", "start_date": "", "end_date": "", "mentor_name": "", "mentor_contact": "", "mentor_designation": "", "description": "", "technologies": [""]}],\n'
+        '    "projects": [{"title": "", "organization": "", "role": "", "start_date": "", "end_date": "", "description": "", "technologies": [""], "links": [""]}],\n'
+        '    "trainings": [{"title": "", "provider": "", "mode": "", "start_date": "", "end_date": "", "description": ""}],\n'
+        '    "certifications": [{"name": "", "issuer": "", "issue_date": "", "expiry_date": "", "credential_id": "", "credential_url": "", "description": ""}],\n'
+        '    "publications": [{"title": "", "publication_type": "", "publisher": "", "publication_date": "", "url": "", "description": ""}],\n'
+        '    "positions": [{"title": "", "organization": "", "start_date": "", "end_date": "", "description": ""}],\n'
+        '    "offers": [{"company_name": "", "role": "", "ctc": "", "status": "", "offer_date": "", "joining_date": "", "location": "", "notes": ""}],\n'
+        '    "placement_policy": {"eligible_for_placements": true, "interested_in_jobs": true, "interested_in_internships": true, "placement_policy_agreed": false, "policy_version": ""},\n'
+        '    "academic_details": [{"degree_name": "", "branch_name": "", "batch_start_year": 0, "batch_end_year": 0, "semester_label": "", "sgpa": "", "closed_backlogs": 0, "live_backlogs": 0, "marksheet_file_path": "", "display_order": 0}]\n'
+        "  }\n"
         "}\n"
         "Rules:\n"
         "- Infer carefully from resume text only.\n"
         "- Keep confidence between 0 and 1.\n"
         "- Canonical skill names should be lowercase.\n"
+        "- Use YYYY-MM-DD format for all dates where possible.\n"
+        "- Keep only information present in resume.\n"
         "- If value unknown, use empty string/list or 0."
     )
 
@@ -851,6 +1115,19 @@ def parse_resume_with_llm(text: str) -> Dict[str, Any]:
     if career_level not in {"entry", "junior", "mid", "senior", "lead"}:
         career_level = "entry"
 
+    canonical_skill_names = _normalize_unique(
+        [item.get("canonical", "") for item in normalized_skills if isinstance(item, dict)],
+        limit=50,
+    )
+    normalized_profile_modules = _normalize_profile_modules(
+        candidate_modules=parsed.get("profile_modules"),
+        contact=contact,
+        canonical_skills=canonical_skill_names,
+        summary=str(parsed.get("summary", "")).strip(),
+        education_entries=parsed.get("education", []),
+        keywords=_normalize_unique(parsed.get("keywords", []), limit=25),
+    )
+
     output = {
         "contact": {
             "name": str(contact.get("name", "")).strip(),
@@ -867,6 +1144,7 @@ def parse_resume_with_llm(text: str) -> Dict[str, Any]:
         "tech_stack": _normalize_unique(parsed.get("tech_stack", []), limit=20),
         "missing_skills": _normalize_unique(parsed.get("missing_skills", []), limit=20),
         "strengths": _normalize_unique(parsed.get("strengths", []), limit=20),
+        "profile_modules": normalized_profile_modules,
         "_method": parsed.get("_method", "unknown"),
         "_gemini_model": parsed.get("_gemini_model", ""),
         "_gemini_status": gemini_status,
@@ -958,6 +1236,7 @@ def extract_resume_data(data: bytes, filename: str) -> Dict[str, Any]:
         "tech_stack": structured.get("tech_stack", []),
         "missing_skills": structured.get("missing_skills", []),
         "strengths": structured.get("strengths", []),
+        "profile_modules": structured.get("profile_modules", {}),
         "raw_text": cleaned[:5000],
         "raw_text_quality": {
             "chars": text_meta.get("chars", 0),

@@ -19,6 +19,10 @@ if _BACKEND_ENV.exists():
     load_dotenv(dotenv_path=_BACKEND_ENV, override=True)
 
 app = Flask(__name__)
+BACKEND_DIR = Path(__file__).resolve().parent
+PUBLIC_DIR = BACKEND_DIR / 'public'
+UPLOADS_DIR = BACKEND_DIR / 'uploads'
+
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
 # PostgreSQL connection string
 # Format: postgresql://username:password@host:port/database
@@ -39,12 +43,15 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = str(UPLOADS_DIR)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Create upload directories
-os.makedirs('uploads/resumes', exist_ok=True)
-os.makedirs('uploads/profiles', exist_ok=True)
+os.makedirs(UPLOADS_DIR / 'resumes', exist_ok=True)
+os.makedirs(UPLOADS_DIR / 'profiles', exist_ok=True)
+os.makedirs(PUBLIC_DIR / 'resumes', exist_ok=True)
+os.makedirs(PUBLIC_DIR / 'profile_pictures', exist_ok=True)
+os.makedirs(PUBLIC_DIR / 'attachments', exist_ok=True)
 
 from models import db
 
@@ -110,7 +117,7 @@ def index():
 
 @app.route('/public/<path:filename>')
 def serve_public(filename):
-    return send_from_directory('public', filename)
+    return send_from_directory(str(PUBLIC_DIR), filename)
 
 @app.route('/<path:path>')
 def serve_static(path):

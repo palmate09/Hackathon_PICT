@@ -161,6 +161,11 @@ export interface StudentFullProfileResponse {
   resume_path?: string;
   stats?: Record<string, number>;
   completion_percentage?: number;
+  completion_breakdown?: {
+    completed_criteria: number;
+    total_criteria: number;
+    missing_criteria: string[];
+  };
 }
 
 export interface JobOpportunityCard {

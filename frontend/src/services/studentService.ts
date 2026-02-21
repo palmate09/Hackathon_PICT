@@ -27,10 +27,34 @@ export const studentService = {
 
   uploadResume: async (
     file: File
-  ): Promise<{ resume_path: string; resume_analysis?: any; message?: string }> => {
+  ): Promise<{
+    resume_path: string;
+    resume_analysis?: any;
+    message?: string;
+    profile_autofill?: {
+      enabled?: boolean;
+      profile_fields_updated?: string[];
+      skills_merged?: number;
+      interests_merged?: number;
+      sections?: Record<string, { added?: number; updated?: number; skipped?: number }>;
+      total_added?: number;
+      total_updated?: number;
+    };
+  }> => {
     const formData = new FormData();
     formData.append('resume', file);
     const response = await api.post('/student/resume/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  uploadProfilePicture: async (
+    file: File
+  ): Promise<{ profile_picture: string; profile?: StudentProfile; message?: string }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await api.post('/student/profile-picture', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;

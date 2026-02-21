@@ -7,6 +7,28 @@ import json
 # db will be initialized in app.py
 db = SQLAlchemy()
 
+
+def _decode_json_list(value):
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list):
+                return parsed
+            if isinstance(parsed, str):
+                parsed_text = parsed.strip()
+                return [parsed_text] if parsed_text else []
+        except (TypeError, ValueError):
+            pass
+        return [part.strip() for part in stripped.split(',') if part.strip()]
+    return [value]
+
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -83,6 +105,8 @@ class StudentProfile(db.Model):
     positions = db.relationship('StudentPosition', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     attachments = db.relationship('StudentAttachment', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     offers = db.relationship('StudentOffer', backref='student', lazy='dynamic', cascade='all, delete-orphan')
+    placement_policies = db.relationship('StudentPlacementPolicy', backref='student', lazy='dynamic', cascade='all, delete-orphan')
+    academic_details = db.relationship('StudentAcademicDetail', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     skills_rel = db.relationship('StudentSkill', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     
     def to_dict(self):
@@ -100,9 +124,9 @@ class StudentProfile(db.Model):
             'course': self.course,
             'specialization': self.specialization,
             'gender': self.gender,
-            'education': json.loads(self.education) if self.education else [],
-            'skills': json.loads(self.skills) if self.skills else [],
-            'interests': json.loads(self.interests) if self.interests else [],
+            'education': _decode_json_list(self.education),
+            'skills': _decode_json_list(self.skills),
+            'interests': _decode_json_list(self.interests),
             'resume_path': self.resume_path,
             'profile_picture': self.profile_picture,
             'bio': self.bio,
@@ -171,7 +195,7 @@ class StudentExperience(db.Model):
             'is_current': self.is_current,
             'location': self.location,
             'description': self.description,
-            'technologies': json.loads(self.technologies) if self.technologies else []
+            'technologies': _decode_json_list(self.technologies)
         }
 
 class StudentInternship(db.Model):
@@ -215,7 +239,7 @@ class StudentInternship(db.Model):
             'mentor_contact': self.mentor_contact,
             'mentor_designation': self.mentor_designation,
             'description': self.description,
-            'technologies': json.loads(self.technologies) if self.technologies else []
+            'technologies': _decode_json_list(self.technologies)
         }
 
 class StudentProject(db.Model):
@@ -242,8 +266,8 @@ class StudentProject(db.Model):
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'end_date': self.end_date.isoformat() if self.end_date else None,
             'description': self.description,
-            'technologies': json.loads(self.technologies) if self.technologies else [],
-            'links': json.loads(self.links) if self.links else []
+            'technologies': _decode_json_list(self.technologies),
+            'links': _decode_json_list(self.links)
         }
 
 class StudentTraining(db.Model):
@@ -390,6 +414,74 @@ class StudentOffer(db.Model):
             'notes': self.notes
         }
 
+class StudentPlacementPolicy(db.Model):
+    __tablename__ = 'student_placement_policies'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student_profiles.id'), unique=True, nullable=False)
+    eligible_for_placements = db.Column(db.Boolean, default=True)
+    interested_in_jobs = db.Column(db.Boolean, default=True, nullable=False)
+    interested_in_internships = db.Column(db.Boolean, default=True, nullable=False)
+    placement_policy_agreed = db.Column(db.Boolean, default=False, nullable=False)
+    policy_version = db.Column(db.String(64))
+    policy_document_url = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'eligible_for_placements': self.eligible_for_placements,
+            'interested_in_jobs': self.interested_in_jobs,
+            'interested_in_internships': self.interested_in_internships,
+            'placement_policy_agreed': self.placement_policy_agreed,
+            'policy_version': self.policy_version,
+            'policy_document_url': self.policy_document_url,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+class StudentAcademicDetail(db.Model):
+    __tablename__ = 'student_academic_details'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student_profiles.id'), nullable=False)
+    degree_name = db.Column(db.String(150))
+    branch_name = db.Column(db.String(150))
+    batch_start_year = db.Column(db.Integer)
+    batch_end_year = db.Column(db.Integer)
+    semester_label = db.Column(db.String(20), nullable=False)
+    sgpa = db.Column(db.String(16))
+    closed_backlogs = db.Column(db.Integer, default=0, nullable=False)
+    live_backlogs = db.Column(db.Integer, default=0, nullable=False)
+    marksheet_file_path = db.Column(db.String(255))
+    display_order = db.Column(db.Integer, default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'semester_label', name='uq_student_academic_semester'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'degree_name': self.degree_name,
+            'branch_name': self.branch_name,
+            'batch_start_year': self.batch_start_year,
+            'batch_end_year': self.batch_end_year,
+            'semester_label': self.semester_label,
+            'sgpa': self.sgpa,
+            'closed_backlogs': self.closed_backlogs,
+            'live_backlogs': self.live_backlogs,
+            'marksheet_file_path': self.marksheet_file_path,
+            'display_order': self.display_order,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
 class CompanyProfile(db.Model):
     __tablename__ = 'company_profiles'
     
@@ -461,7 +553,7 @@ class Opportunity(db.Model):
             'title': self.title,
             'description': self.description,
             'domain': self.domain,
-            'required_skills': json.loads(self.required_skills) if self.required_skills else [],
+            'required_skills': _decode_json_list(self.required_skills),
             'duration': self.duration,
             'stipend': self.stipend,
             'location': self.location,
@@ -615,7 +707,7 @@ class Skill(db.Model):
             'name': self.name,
             'category': self.category,
             'normalized_name': self.normalized_name,
-            'aliases': json.loads(self.aliases) if self.aliases else []
+            'aliases': _decode_json_list(self.aliases)
         }
 
 
