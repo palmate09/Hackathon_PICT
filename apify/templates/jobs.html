@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Listings - Job Recommendation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>💼 Job Listings</h1>
+            <a href="/" class="btn btn-secondary">← Back to Home</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="filter-section">
+            <h3>Filter Jobs</h3>
+            <div class="filter-group">
+                <label for="platformFilter">Platform:</label>
+                <select id="platformFilter">
+                    <option value="">All Platforms</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="Naukri">Naukri</option>
+                    <option value="Internshala">Internshala</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="searchFilter">Search:</label>
+                <input type="text" id="searchFilter" placeholder="Search jobs...">
+            </div>
+        </section>
+
+        <section id="jobsContainer" class="jobs-list">
+            <p>No jobs to display. Please upload a resume first.</p>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 Job Recommendation Engine</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='jobs-script.js') }}"></script>
+</body>
+</html>

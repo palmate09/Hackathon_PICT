@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Recommendation - Resume-Based Job Finder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>💼 Job Recommendation Engine</h1>
+            <p>Upload your resume and find the perfect job matches across LinkedIn, Naukri, and Internshala</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="upload-section">
+            <div class="upload-card">
+                <h2>Upload Your Resume</h2>
+                <p>Supported formats: PDF, DOCX, TXT</p>
+                
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="resume">Select Resume:</label>
+                        <input type="file" id="resume" name="resume" accept=".pdf,.docx,.txt" required>
+                        <small>Maximum file size: 10MB</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">Location (Optional):</label>
+                        <input type="text" id="location" name="location" placeholder="e.g., San Francisco, Bangalore">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Find Jobs</button>
+                </form>
+
+                <div id="loadingSpinner" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p>Processing your resume and searching for jobs...</p>
+                </div>
+
+                <div id="errorMessage" class="error-message hidden"></div>
+                <div id="successMessage" class="success-message hidden"></div>
+            </div>
+        </section>
+
+        <section id="resultsSection" class="results-section hidden">
+            <div class="resume-info">
+                <h3>📋 Resume Analysis</h3>
+                <div class="info-grid">
+                    <div class="info-box">
+                        <strong>Skills Found:</strong>
+                        <div id="skillsList" class="skills-list"></div>
+                    </div>
+                    <div class="info-box">
+                        <strong>Years of Experience:</strong>
+                        <p id="experienceText">-</p>
+                    </div>
+                    <div class="info-box">
+                        <strong>Email:</strong>
+                        <p id="emailText">-</p>
+                    </div>
+                    <div class="info-box">
+                        <strong>Phone:</strong>
+                        <p id="phoneText">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="jobs-info">
+                <h3>💼 Job Recommendations</h3>
+                <p id="totalJobs">Found: 0 jobs</p>
+                <div id="jobsList" class="jobs-list"></div>
+                <div id="pagination" class="pagination"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 Job Recommendation Engine. Powered by Apify API</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

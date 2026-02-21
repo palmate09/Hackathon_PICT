@@ -1,0 +1,512 @@
+.ai-resume-matcher {
+  --matcher-grad-start: #0ea5e9;
+  --matcher-grad-end: #2563eb;
+  --source-naukri: #16a34a;
+  --source-linkedin: #0a66c2;
+  --source-generic: var(--text-tertiary);
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.ai-resume-matcher .matcher-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.ai-resume-matcher .matcher-header h1 {
+  font-size: 2.35rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--matcher-grad-start) 0%, var(--matcher-grad-end) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+
+.ai-resume-matcher .matcher-header p {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+}
+
+.ai-resume-matcher .card {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 2rem;
+  border: 1px solid var(--border-color);
+}
+
+.ai-resume-matcher .upload-section h2,
+.ai-resume-matcher .extracted-data-section h2,
+.ai-resume-matcher .recommendations-header h2 {
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+.ai-resume-matcher .upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 2.75rem 2rem;
+  text-align: center;
+  transition: all 0.25s ease;
+  cursor: pointer;
+  background: var(--bg-secondary);
+}
+
+.ai-resume-matcher .upload-area.drag-active {
+  border-color: var(--primary);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.ai-resume-matcher .upload-area.has-file {
+  border-color: var(--success);
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.ai-resume-matcher .file-input {
+  display: none;
+}
+
+.ai-resume-matcher .upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.95rem;
+  cursor: pointer;
+}
+
+.ai-resume-matcher .upload-label p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.ai-resume-matcher .file-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 0.4rem;
+}
+
+.ai-resume-matcher .upload-hint {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+.ai-resume-matcher .file-types {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+}
+
+.ai-resume-matcher .remove-file-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-top: 1rem;
+  transition: all 0.2s ease;
+}
+
+.ai-resume-matcher .remove-file-btn:hover {
+  filter: brightness(0.92);
+}
+
+.ai-resume-matcher .upload-btn {
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.ai-resume-matcher .spinner {
+  animation: ai-resume-spin 1s linear infinite;
+}
+
+@keyframes ai-resume-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-resume-matcher .error-message {
+  background: rgba(239, 68, 68, 0.13);
+  color: var(--danger);
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.ai-resume-matcher .data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.ai-resume-matcher .data-card {
+  background: var(--bg-secondary);
+  padding: 1.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--primary);
+}
+
+.ai-resume-matcher .data-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.ai-resume-matcher .data-card h3 {
+  margin: 0 0 0.85rem;
+  font-size: 1.08rem;
+  color: var(--text-primary);
+}
+
+.ai-resume-matcher .skills-list,
+.ai-resume-matcher .skills-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ai-resume-matcher .skill-tag {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.83rem;
+  font-weight: 600;
+}
+
+.ai-resume-matcher .skill-tag.matched {
+  background: rgba(16, 185, 129, 0.13);
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.ai-resume-matcher .experience-value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0.4rem 0;
+}
+
+.ai-resume-matcher .career-level {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.ai-resume-matcher .summary-text {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.ai-resume-matcher .roles-list,
+.ai-resume-matcher .missing-skills-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ai-resume-matcher .roles-list li,
+.ai-resume-matcher .missing-skills-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.ai-resume-matcher .roles-list li:last-child,
+.ai-resume-matcher .missing-skills-list li:last-child {
+  border-bottom: none;
+}
+
+.ai-resume-matcher .recommendations-section {
+  margin-top: 1.5rem;
+}
+
+.ai-resume-matcher .recommendations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.2rem;
+}
+
+.ai-resume-matcher .source-toggle label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.ai-resume-matcher .loading-state,
+.ai-resume-matcher .empty-state {
+  text-align: center;
+  padding: 3rem 1.2rem;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+}
+
+.ai-resume-matcher .loading-state p {
+  margin-top: 0.8rem;
+}
+
+.ai-resume-matcher .recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.25rem;
+}
+
+.ai-resume-matcher .recommendations-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.ai-resume-matcher .recommendations-count {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.ai-resume-matcher .page-size-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.ai-resume-matcher .page-size-selector select {
+  min-width: 70px;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.ai-resume-matcher .job-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.ai-resume-matcher .job-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.ai-resume-matcher .job-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.ai-resume-matcher .job-card-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.18rem;
+  color: var(--text-primary);
+}
+
+.ai-resume-matcher .company-name {
+  color: var(--text-tertiary);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.ai-resume-matcher .source-badge {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.17rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.ai-resume-matcher .source-badge.source-naukri {
+  background: var(--source-naukri);
+}
+
+.ai-resume-matcher .source-badge.source-linkedin {
+  background: var(--source-linkedin);
+}
+
+.ai-resume-matcher .source-badge.source-generic {
+  background: var(--source-generic);
+}
+
+.ai-resume-matcher .match-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, var(--matcher-grad-start) 0%, var(--matcher-grad-end) 100%);
+  color: #fff;
+  padding: 0.48rem 0.9rem;
+  border-radius: 20px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ai-resume-matcher .job-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+  color: var(--text-tertiary);
+  font-size: 0.86rem;
+}
+
+.ai-resume-matcher .job-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.ai-resume-matcher .match-reason {
+  background: var(--bg-secondary);
+  padding: 0.95rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border-left: 3px solid var(--primary);
+}
+
+.ai-resume-matcher .match-reason p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.ai-resume-matcher .matched-skills,
+.ai-resume-matcher .required-skills {
+  margin-bottom: 1rem;
+}
+
+.ai-resume-matcher .matched-skills strong,
+.ai-resume-matcher .required-skills strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.ai-resume-matcher .job-card-actions {
+  margin-top: 1rem;
+}
+
+.ai-resume-matcher .job-card-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.ai-resume-matcher .no-url-message {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+}
+
+.ai-resume-matcher .search-badge {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  padding: 0.72rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--warning);
+}
+
+.ai-resume-matcher .pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.ai-resume-matcher .pagination-btn {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-resume-matcher .pagination-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.ai-resume-matcher .pagination-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.ai-resume-matcher .pagination-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .ai-resume-matcher {
+    padding: 1rem;
+  }
+
+  .ai-resume-matcher .card {
+    padding: 1.25rem;
+  }
+
+  .ai-resume-matcher .recommendations-grid,
+  .ai-resume-matcher .data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-resume-matcher .recommendations-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .ai-resume-matcher .recommendations-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ai-resume-matcher .job-card-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
