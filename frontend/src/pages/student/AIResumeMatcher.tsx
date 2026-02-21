@@ -718,7 +718,7 @@ const AIResumeMatcher: React.FC = () => {
                   <p>
                     OCR: {resumeAnalysis.raw_text_quality?.ocr_used ? 'Yes' : 'No'} ({resumeAnalysis.model_meta?.ocr_engine || 'none'})
                   </p>
-                  {!resumeAnalysis.raw_text_quality?.ocr_available && resumeAnalysis.raw_text_quality?.ocr_error && (
+                  {resumeAnalysis.raw_text_quality?.ocr_error && (
                     <p>
                       OCR note: {resumeAnalysis.raw_text_quality.ocr_error}
                     </p>

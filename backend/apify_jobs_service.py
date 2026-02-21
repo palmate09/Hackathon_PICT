@@ -80,36 +80,110 @@ def _cache_path() -> str:
     return os.path.join(cache_dir, "apify_jobs_cache.json")
 
 
-def _load_cached_jobs(max_age_seconds: int = 24 * 3600) -> List[Dict[str, Any]]:
+def _normalize_keywords_for_cache(keywords: List[str]) -> List[str]:
+    cleaned = []
+    seen = set()
+    for keyword in keywords or []:
+        token = re.sub(r"\s+", " ", str(keyword or "")).strip().lower()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        cleaned.append(token)
+    return cleaned
+
+
+def _build_cache_key(keywords: List[str], location: str) -> str:
+    safe_location = _sanitize_location(location, default="India").lower()
+    normalized_keywords = _normalize_keywords_for_cache(keywords)
+    payload = {
+        "location": safe_location,
+        "keywords": normalized_keywords[:16],
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return serialized
+
+
+def _load_cached_jobs(cache_key: str = "", max_age_seconds: int = 24 * 3600) -> List[Dict[str, Any]]:
     path = _cache_path()
     if not os.path.exists(path):
         return []
     try:
         with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
-        created_at = float(payload.get("created_at", 0))
-        jobs = payload.get("jobs", [])
-        if not isinstance(jobs, list):
+
+        # Backward compatibility: legacy single-entry cache shape.
+        if isinstance(payload, dict) and isinstance(payload.get("jobs"), list):
+            created_at = float(payload.get("created_at", 0))
+            jobs = payload.get("jobs", [])
+            if max_age_seconds > 0 and created_at > 0:
+                age = time.time() - created_at
+                if age > max_age_seconds:
+                    return []
+            return jobs
+
+        if not isinstance(payload, dict):
             return []
-        if max_age_seconds > 0 and created_at > 0:
-            age = time.time() - created_at
-            if age > max_age_seconds:
+
+        entries = payload.get("entries", {})
+        if not isinstance(entries, dict):
+            return []
+
+        if cache_key and cache_key in entries:
+            entry = entries.get(cache_key, {})
+            jobs = entry.get("jobs", []) if isinstance(entry, dict) else []
+            created_at = float((entry or {}).get("created_at", 0)) if isinstance(entry, dict) else 0.0
+            if not isinstance(jobs, list):
                 return []
-        return jobs
+            if max_age_seconds > 0 and created_at > 0 and (time.time() - created_at) > max_age_seconds:
+                return []
+            return jobs
+
+        # If no key provided, return the latest available entry.
+        latest_key = payload.get("latest_key", "")
+        if latest_key and latest_key in entries:
+            latest = entries.get(latest_key, {})
+            jobs = latest.get("jobs", []) if isinstance(latest, dict) else []
+            created_at = float((latest or {}).get("created_at", 0)) if isinstance(latest, dict) else 0.0
+            if not isinstance(jobs, list):
+                return []
+            if max_age_seconds > 0 and created_at > 0 and (time.time() - created_at) > max_age_seconds:
+                return []
+            return jobs
+        return []
     except Exception as exc:
         print(f"⚠️ Failed to load Apify cache: {exc}")
         return []
 
 
-def _save_cached_jobs(jobs: List[Dict[str, Any]]) -> None:
+def _save_cached_jobs(jobs: List[Dict[str, Any]], cache_key: str, keywords: List[str], location: str) -> None:
     if not jobs:
         return
     path = _cache_path()
-    payload = {
-        "created_at": time.time(),
-        "jobs": jobs,
-    }
     try:
+        payload: Dict[str, Any] = {}
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        if not isinstance(payload, dict):
+            payload = {}
+
+        entries = payload.get("entries", {})
+        if not isinstance(entries, dict):
+            entries = {}
+
+        entries[cache_key] = {
+            "created_at": time.time(),
+            "jobs": jobs,
+            "keywords": _normalize_keywords_for_cache(keywords),
+            "location": _sanitize_location(location, default="India"),
+        }
+
+        payload = {
+            "version": 2,
+            "latest_key": cache_key,
+            "entries": entries,
+        }
+
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
     except Exception as exc:
@@ -414,6 +488,16 @@ def fetch_jobs_from_apify(keywords: List[str], location: str = "India", resume_s
     location = _sanitize_location(location, default="India")
     print(f"🚀 Fetching jobs dynamically from Apify for: {keywords[:5]}")
 
+    cache_key = _build_cache_key(keywords, location)
+    fresh_cache_seconds = int(os.getenv("APIFY_CACHE_FRESH_SECONDS", "600"))
+    fallback_cache_seconds = int(os.getenv("APIFY_CACHE_FALLBACK_SECONDS", str(24 * 3600)))
+
+    # Fast path: return fresh cache immediately for identical query.
+    fresh_cached_jobs = _load_cached_jobs(cache_key=cache_key, max_age_seconds=fresh_cache_seconds)
+    if fresh_cached_jobs:
+        print(f"⚡ Using fresh Apify cache for query: {len(fresh_cached_jobs)} jobs")
+        return fresh_cached_jobs
+
     all_jobs: List[Dict[str, Any]] = []
     fallback_url_counts: Dict[str, int] = {"linkedin": 0, "naukri": 0, "internshala": 0, "external": 0}
 
@@ -486,13 +570,19 @@ def fetch_jobs_from_apify(keywords: List[str], location: str = "India", resume_s
     print(f"🔗 Fallback URLs used: {fallback_url_counts}")
     print(f"✅ Total unique jobs: {len(deduped)} (Dynamic multi-platform via Apify)")
     if deduped:
-        _save_cached_jobs(deduped)
+        _save_cached_jobs(deduped, cache_key=cache_key, keywords=keywords, location=location)
         return deduped
 
-    # If live fetch is empty (e.g., quota exhausted), use last successful cache.
-    cached_jobs = _load_cached_jobs()
+    # If live fetch is empty (e.g., quota exhausted), use query cache as fallback.
+    cached_jobs = _load_cached_jobs(cache_key=cache_key, max_age_seconds=fallback_cache_seconds)
     if cached_jobs:
-        print(f"♻️ Using cached Apify jobs: {len(cached_jobs)}")
+        print(f"♻️ Using fallback Apify cache for query: {len(cached_jobs)}")
         return cached_jobs
+
+    # Last fallback: use latest cached dataset if query-specific cache is unavailable.
+    latest_cached_jobs = _load_cached_jobs(cache_key="", max_age_seconds=fallback_cache_seconds)
+    if latest_cached_jobs:
+        print(f"♻️ Using latest fallback Apify cache: {len(latest_cached_jobs)}")
+        return latest_cached_jobs
 
     return deduped

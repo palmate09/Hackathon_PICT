@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List, Dict, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ThreadPoolExecutor, wait
 import requests
 import sys
 from apify_client import ApifyClient
@@ -47,6 +47,8 @@ class ApifyJobScraper:
             *self._resolve_values('INTERNSHALA_APIFY_API_TOKEN', 'APIFY_API_TOKENS', 'APIFY_API_TOKEN'),
         )
         self._clients: Dict[str, ApifyClient] = {}
+        self.actor_timeout_secs = self._resolve_int_value("APIFY_ACTOR_TIMEOUT_SECONDS", 35)
+        self.platform_timeout_secs = self._resolve_int_value("APIFY_PLATFORM_TIMEOUT_SECONDS", 45)
         
         # Apify Actor IDs — loaded from environment variables
         self.linkedin_actor_id = self._resolve_value('LINKEDIN_ACTOR_ID') or 'bebity/linkedin-jobs-scraper'
@@ -56,7 +58,8 @@ class ApifyJobScraper:
             f"[ApifyConfig] Actors — LinkedIn: {self.linkedin_actor_id}, "
             f"Naukri: {self.naukri_actor_id or 'unset'}, Internshala: {self.internshala_actor_id or 'unset'} | "
             f"token pools: default={len(self.default_tokens)}, linkedin={len(self.linkedin_tokens)}, "
-            f"naukri={len(self.naukri_tokens)}, internshala={len(self.internshala_tokens)}",
+            f"naukri={len(self.naukri_tokens)}, internshala={len(self.internshala_tokens)}, "
+            f"actor_timeout={self.actor_timeout_secs}s, platform_timeout={self.platform_timeout_secs}s",
             flush=True,
         )
 
@@ -140,6 +143,16 @@ class ApifyJobScraper:
     def _resolve_value(self, key: str) -> str:
         values = self._resolve_values(key)
         return values[0] if values else ""
+
+    def _resolve_int_value(self, key: str, default: int) -> int:
+        raw = self._resolve_value(key)
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+            return value if value > 0 else default
+        except (TypeError, ValueError):
+            return default
 
     @classmethod
     def _build_token_pool(cls, *raw_values: str) -> List[str]:
@@ -264,7 +277,7 @@ class ApifyJobScraper:
                     run_input=run_input,
                     token_pool=self.linkedin_tokens or self.default_tokens,
                     platform_name="LinkedIn",
-                    timeout_secs=90,
+                    timeout_secs=self.actor_timeout_secs,
                 )
                 print(f"[LinkedIn] Run completed with ID: {run.get('id')}", flush=True)
                 print(f"[LinkedIn] Run status: {run.get('status')}", flush=True)
@@ -381,7 +394,7 @@ class ApifyJobScraper:
                     run_input=run_input,
                     token_pool=self.naukri_tokens or self.default_tokens,
                     platform_name="Naukri",
-                    timeout_secs=90,
+                    timeout_secs=self.actor_timeout_secs,
                 )
                 print(f"[Naukri] Run completed with ID: {run.get('id')}", flush=True)
 
@@ -476,7 +489,7 @@ class ApifyJobScraper:
                     run_input=run_input,
                     token_pool=self.internshala_tokens or self.default_tokens,
                     platform_name="Internshala",
-                    timeout_secs=90,
+                    timeout_secs=self.actor_timeout_secs,
                 )
                 print(f"[Internshala] Run completed with ID: {run.get('id')}", flush=True)
 
@@ -553,16 +566,26 @@ class ApifyJobScraper:
 
         all_jobs = {'linkedin': [], 'naukri': [], 'internshala': []}
 
-        # Run all three scrapers simultaneously; each is already capped at 90 s internally.
-        # Give the whole pool an extra 20 s grace period (total 110 s wall-clock).
+        # Run all platform scrapers simultaneously with bounded wall-clock timeout.
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(fn): name for name, fn in tasks.items()}
-            for future in as_completed(futures, timeout=110):
-                name = futures[future]
+            futures = {name: executor.submit(fn) for name, fn in tasks.items()}
+            done, not_done = wait(futures.values(), timeout=self.platform_timeout_secs)
+
+            future_to_name = {future: name for name, future in futures.items()}
+            for future in done:
+                name = future_to_name.get(future, "unknown")
                 try:
                     all_jobs[name] = future.result()
                 except Exception as e:
                     print(f"[Job Search] {name} scraper raised an exception: {e}", flush=True)
+
+            for future in not_done:
+                name = future_to_name.get(future, "unknown")
+                future.cancel()
+                print(
+                    f"[Job Search] {name} scraper timed out after {self.platform_timeout_secs}s; using partial results",
+                    flush=True,
+                )
 
         total_jobs = sum(len(j) for j in all_jobs.values())
         print(f"[Job Search] Total jobs found: {total_jobs}", flush=True)

@@ -2,6 +2,9 @@ import io
 import json
 import os
 import re
+import hashlib
+import time
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -45,6 +48,8 @@ except ImportError:
 
 
 _PADDLE_INSTANCE = None
+_PARSE_CACHE_LOCK = threading.Lock()
+_PARSE_CACHE: Dict[str, Dict[str, Any]] = {}
 _IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "bmp", "tiff", "tif"}
 _SKILL_ALIASES = {
     "js": "javascript",
@@ -239,7 +244,7 @@ def _is_valid_skill_candidate(raw_skill: str, canonical_skill: str) -> bool:
 
 
 def _build_resilient_http_session() -> requests.Session:
-    retry_total = int(_get_config_value("GEMINI_HTTP_RETRIES", "2"))
+    retry_total = int(_get_config_value("GEMINI_HTTP_RETRIES", "1"))
     retry_backoff = float(_get_config_value("GEMINI_HTTP_BACKOFF", "0.8"))
 
     retry = Retry(
@@ -386,7 +391,7 @@ def _ocr_with_tesseract(image: Image.Image) -> Tuple[str, float]:
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
     prepared = _prepare_image_for_ocr(image)
-    lang = _get_config_value("OCR_LANG", "eng")
+    lang = _resolve_tesseract_lang(_get_config_value("OCR_TESSERACT_LANG", _get_config_value("OCR_LANG", "eng")))
 
     data = pytesseract.image_to_data(
         prepared,
@@ -412,6 +417,19 @@ def _ocr_with_tesseract(image: Image.Image) -> Tuple[str, float]:
     merged = _clean_text(" ".join(tokens))
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
     return merged, round(avg_confidence, 4)
+
+
+def _resolve_tesseract_lang(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "eng"
+    aliases = {
+        "en": "eng",
+        "english": "eng",
+        "hi": "hin",
+        "hindi": "hin",
+    }
+    return aliases.get(raw, raw)
 
 
 def _select_ocr_engine() -> str:
@@ -443,6 +461,7 @@ def _ocr_images(images: List[Image.Image]) -> Dict[str, Any]:
 
     page_texts = []
     page_confidences = []
+    ocr_errors: List[str] = []
     for image in images:
         text = ""
         confidence = 0.0
@@ -452,14 +471,17 @@ def _ocr_images(images: List[Image.Image]) -> Dict[str, Any]:
                 text, confidence = _ocr_with_paddle(image)
             else:
                 text, confidence = _ocr_with_tesseract(image)
-        except Exception:
+        except Exception as exc:
             # Fallback from PaddleOCR to Tesseract per image when available.
             if engine == "paddleocr" and pytesseract is not None:
                 try:
                     text, confidence = _ocr_with_tesseract(image)
                     engine = "tesseract"
-                except Exception:
+                except Exception as fallback_exc:
+                    ocr_errors.append(str(fallback_exc))
                     text, confidence = "", 0.0
+            else:
+                ocr_errors.append(str(exc))
 
         if text:
             page_texts.append(text)
@@ -468,12 +490,54 @@ def _ocr_images(images: List[Image.Image]) -> Dict[str, Any]:
 
     merged = _clean_text("\n".join(page_texts))
     avg_confidence = sum(page_confidences) / len(page_confidences) if page_confidences else 0.0
+    deduped_errors = []
+    seen_errors = set()
+    for message in ocr_errors:
+        compact = _clean_text(message)
+        if not compact or compact in seen_errors:
+            continue
+        seen_errors.add(compact)
+        deduped_errors.append(compact)
+    error_text = " | ".join(deduped_errors[:2])
     return {
         "text": merged,
         "engine": engine,
         "confidence": round(avg_confidence, 4),
-        "error": "",
+        "error": error_text,
     }
+
+
+def _build_parse_cache_key(text: str) -> str:
+    normalized = _clean_text(text)
+    return hashlib.sha256(normalized.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _get_cached_parse(cache_key: str) -> Dict[str, Any]:
+    ttl_seconds = int(_get_config_value("RESUME_PARSE_CACHE_TTL_SECONDS", "21600"))
+    with _PARSE_CACHE_LOCK:
+        entry = _PARSE_CACHE.get(cache_key)
+        if not entry:
+            return {}
+        created_at = float(entry.get("created_at", 0))
+        if ttl_seconds > 0 and (time.time() - created_at) > ttl_seconds:
+            _PARSE_CACHE.pop(cache_key, None)
+            return {}
+        payload = entry.get("payload", {})
+        return payload if isinstance(payload, dict) else {}
+
+
+def _set_cached_parse(cache_key: str, payload: Dict[str, Any]) -> None:
+    if not isinstance(payload, dict) or not payload:
+        return
+    max_entries = int(_get_config_value("RESUME_PARSE_CACHE_MAX_ENTRIES", "128"))
+    with _PARSE_CACHE_LOCK:
+        _PARSE_CACHE[cache_key] = {
+            "created_at": time.time(),
+            "payload": payload,
+        }
+        if max_entries > 0 and len(_PARSE_CACHE) > max_entries:
+            oldest_key = min(_PARSE_CACHE.keys(), key=lambda key: _PARSE_CACHE[key].get("created_at", 0))
+            _PARSE_CACHE.pop(oldest_key, None)
 
 
 def _extract_raw_text_with_metadata(data: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
@@ -564,7 +628,7 @@ def _gemini_structured_parse(text: str) -> Dict[str, Any]:
         raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set")
 
     model = _get_config_value("GEMINI_MODEL", "gemini-2.5-flash")
-    timeout_seconds = int(_get_config_value("GEMINI_TIMEOUT_SECONDS", "45"))
+    timeout_seconds = int(_get_config_value("GEMINI_TIMEOUT_SECONDS", "22"))
     max_chars = int(_get_config_value("RESUME_PARSE_MAX_CHARS", "22000"))
 
     prompt = (
@@ -707,6 +771,15 @@ def parse_resume_with_llm(text: str) -> Dict[str, Any]:
     gemini_error = ""
     parsed = {}
     has_gemini_key = bool((_get_config_value("GEMINI_API_KEY") or _get_config_value("GOOGLE_API_KEY") or "").strip())
+    cache_key = _build_parse_cache_key(cleaned)
+
+    cached = _get_cached_parse(cache_key)
+    if cached:
+        cached_payload = dict(cached)
+        cached_payload["_gemini_status"] = cached_payload.get("_gemini_status", "success_cached")
+        cached_payload["_gemini_error"] = cached_payload.get("_gemini_error", "")
+        return cached_payload
+
     try:
         if has_gemini_key:
             parsed = _gemini_structured_parse(cleaned)
@@ -778,7 +851,7 @@ def parse_resume_with_llm(text: str) -> Dict[str, Any]:
     if career_level not in {"entry", "junior", "mid", "senior", "lead"}:
         career_level = "entry"
 
-    return {
+    output = {
         "contact": {
             "name": str(contact.get("name", "")).strip(),
             "email": str(contact.get("email", "")).strip(),
@@ -800,6 +873,12 @@ def parse_resume_with_llm(text: str) -> Dict[str, Any]:
         "_gemini_error": gemini_error[:250],
         "_gemini_configured": has_gemini_key,
     }
+
+    # Cache successful parse outputs for repeated uploads/polls.
+    if output.get("skills") or output.get("summary") or output.get("keywords"):
+        _set_cached_parse(cache_key, output)
+
+    return output
 
 
 def extract_text_from_bytes(data: bytes, filename: str) -> str:
